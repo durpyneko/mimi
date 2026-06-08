@@ -9,84 +9,10 @@
 use image::ImageFormat;
 use ksni::TrayMethods;
 use std::time::Duration;
+use tokio::sync::mpsc;
 
 const VENDOR_ID: u16 = 0x03f0; // HP / HyperX
 const PRODUCT_ID: u16 = 0x05b7; // Cloud III Wireless
-
-#[derive(Debug)]
-struct MimiTray {
-    icon_data: Vec<u8>,
-    width: i32,
-    height: i32,
-    battery: Option<u8>,
-}
-
-fn battery_bar(level: u8) -> String {
-    let filled = (level as usize * 8 / 100).min(8);
-    let empty = 8 - filled;
-    format!("[{}{}] {}%", "█".repeat(filled), "░".repeat(empty), level)
-}
-
-impl ksni::Tray for MimiTray {
-    fn id(&self) -> String {
-        "mimi".into()
-    }
-
-    fn title(&self) -> String {
-        "Mimi".into()
-    }
-
-    fn tool_tip(&self) -> ksni::ToolTip {
-        ksni::ToolTip {
-            title: "nya!".into(),
-            ..Default::default()
-        }
-    }
-
-    fn icon_pixmap(&self) -> Vec<ksni::Icon> {
-        vec![ksni::Icon {
-            width: self.width,
-            height: self.height,
-            data: self.icon_data.clone(),
-        }]
-    }
-
-    fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
-        use ksni::menu::*;
-        let battery_label = match self.battery {
-            Some(level) => battery_bar(level),
-            None => "Battery: disconnected".into(),
-        };
-
-        vec![
-            StandardItem {
-                label: "Mimi — (˵◝ ⩊ ◜˵マ".into(),
-                enabled: false,
-                ..Default::default()
-            }
-            .into(),
-            MenuItem::Separator,
-            StandardItem {
-                label: battery_label,
-                enabled: false,
-                ..Default::default()
-            }
-            .into(),
-            StandardItem {
-                label: "Refresh".into(),
-                activate: Box::new(|_| log::warn!("TODO refresh")),
-                ..Default::default()
-            }
-            .into(),
-            StandardItem {
-                label: "Quit".into(),
-                activate: Box::new(|_| std::process::exit(0)),
-                ..Default::default()
-            }
-            .into(),
-        ]
-    }
-}
 
 fn read_battery() -> Option<u8> {
     let api = match hidapi::HidApi::new() {
@@ -155,6 +81,90 @@ fn read_battery() -> Option<u8> {
     None
 }
 
+fn battery_bar(level: u8) -> String {
+    let filled = (level as usize * 8 / 100).min(8);
+    let empty = 8 - filled;
+    format!("[{}{}] {}%", "█".repeat(filled), "░".repeat(empty), level)
+}
+
+#[derive(Debug)]
+struct MimiTrayState {
+    tray: MimiTray,
+    battery: Option<u8>,
+    refresh_tx: mpsc::UnboundedSender<()>,
+}
+
+#[derive(Debug)]
+struct MimiTray {
+    icon_data: Vec<u8>,
+    width: i32,
+    height: i32,
+}
+
+impl ksni::Tray for MimiTrayState {
+    fn id(&self) -> String {
+        "mimi".into()
+    }
+
+    fn title(&self) -> String {
+        "Mimi".into()
+    }
+
+    fn tool_tip(&self) -> ksni::ToolTip {
+        ksni::ToolTip {
+            title: "nya!".into(),
+            ..Default::default()
+        }
+    }
+
+    fn icon_pixmap(&self) -> Vec<ksni::Icon> {
+        vec![ksni::Icon {
+            width: self.tray.width,
+            height: self.tray.height,
+            data: self.tray.icon_data.clone(),
+        }]
+    }
+
+    fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
+        use ksni::menu::*;
+        let battery_label = match self.battery {
+            // todo if zero displaythis (it's 1 am on a work morning i need to go to bed)
+            Some(level) => battery_bar(level),
+            None => "Battery: disconnected".into(),
+        };
+
+        vec![
+            StandardItem {
+                label: "Mimi — (˵◝ ⩊ ◜˵マ".into(),
+                enabled: false,
+                ..Default::default()
+            }
+            .into(),
+            MenuItem::Separator,
+            StandardItem {
+                label: battery_label,
+                enabled: false,
+                ..Default::default()
+            }
+            .into(),
+            StandardItem {
+                label: "Refresh".into(),
+                activate: Box::new(|this: &mut Self| {
+                    let _ = this.refresh_tx.send(());
+                }),
+                ..Default::default()
+            }
+            .into(),
+            StandardItem {
+                label: "Quit".into(),
+                activate: Box::new(|_| std::process::exit(0)),
+                ..Default::default()
+            }
+            .into(),
+        ]
+    }
+}
+
 #[tokio::main]
 async fn main() {
     nyaaan::init().unwrap();
@@ -187,31 +197,42 @@ async fn main() {
         .await
         .unwrap_or(None);
 
-    let handle = MimiTray {
-        icon_data,
-        width: width as i32,
-        height: height as i32,
+    let (refresh_tx, mut refresh_rx) = mpsc::unbounded_channel::<()>();
+
+    let handle = MimiTrayState {
+        tray: MimiTray {
+            icon_data,
+            width: width as i32,
+            height: height as i32,
+        },
         battery: initial_battery,
+        refresh_tx,
     }
     .spawn()
     .await
-    .expect("Failed to register tray icon");
+    .expect("Failed to register Mimi tray");
 
     log::info!("Tray registered. Battery: {:?}", initial_battery);
 
     tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_mins(30));
+        let mut interval = tokio::time::interval(Duration::from_mins(10));
         interval.tick().await; // consume the immediate first tick
+
         loop {
-            interval.tick().await;
+            tokio::select! {
+                _ = interval.tick() => {
+                    log::debug!("Poll: timer")
+                },
+                _ = refresh_rx.recv() => log::debug!("Poll: manual refresh"),
+            }
+
             let level = tokio::task::spawn_blocking(read_battery)
                 .await
                 .unwrap_or(None);
-            log::debug!("Battery poll: {:?}", level);
+            log::debug!("Battery: {:?}", level);
+
             handle
-                .update(|tray: &mut MimiTray| {
-                    tray.battery = level;
-                })
+                .update(|state: &mut MimiTrayState| state.battery = level)
                 .await;
         }
     });
