@@ -6,6 +6,8 @@
 //   `--`--`--'`--'`--`--`--'`--'
 //                                      HyperX tray icon
 
+mod battery;
+
 use image::ImageFormat;
 use ksni::TrayMethods;
 use std::time::Duration;
@@ -13,79 +15,6 @@ use tokio::sync::mpsc;
 
 const VENDOR_ID: u16 = 0x03f0; // HP / HyperX
 const PRODUCT_ID: u16 = 0x05b7; // Cloud III Wireless
-
-fn read_battery() -> Option<u8> {
-    let api = match hidapi::HidApi::new() {
-        Ok(api) => api,
-        Err(e) => {
-            log::error!("HidApi::new failed: {e}");
-            return None;
-        }
-    };
-
-    let info = api
-        .device_list()
-        .find(|d| d.vendor_id() == VENDOR_ID && d.product_id() == PRODUCT_ID);
-
-    let info = match info {
-        Some(d) => d,
-        None => {
-            log::warn!(
-                "Device {:04x}:{:04x} not found in enumeration",
-                VENDOR_ID,
-                PRODUCT_ID
-            );
-            return None;
-        }
-    };
-
-    log::debug!("Found device at {:?}", info.path());
-
-    let device = match info.open_device(&api) {
-        Ok(d) => d,
-        Err(e) => {
-            log::error!("open_device failed: {e}");
-            return None;
-        }
-    };
-
-    let mut request = [0u8; 64];
-    request[0] = 0x66;
-    request[1] = 0x89;
-
-    match device.write(&request) {
-        Ok(n) => log::debug!("Wrote {n} bytes"),
-        Err(e) => {
-            log::error!("write failed: {e}");
-            return None;
-        }
-    }
-
-    std::thread::sleep(Duration::from_millis(100));
-
-    let mut buf = [0u8; 64];
-    for i in 0..50 {
-        match device.read_timeout(&mut buf, 10) {
-            Ok(n) if n > 0 => {
-                log::debug!("iter {i}: got {n} bytes: {:02x?}", &buf[..n.min(8)]);
-                if buf[0] == 0x66 && buf[1] == 0x89 {
-                    return Some(buf[4]);
-                }
-            }
-            Ok(_) => {} // 0 bytes, keep trying
-            Err(e) => log::warn!("read_timeout error at iter {i}: {e}"),
-        }
-    }
-
-    log::warn!("No matching response after 50 reads");
-    None
-}
-
-fn battery_bar(level: u8) -> String {
-    let filled = (level as usize * 8 / 100).min(8);
-    let empty = 8 - filled;
-    format!("[{}{}] {}%", "█".repeat(filled), "░".repeat(empty), level)
-}
 
 #[derive(Debug)]
 struct MimiTrayState {
@@ -128,8 +57,7 @@ impl ksni::Tray for MimiTrayState {
     fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
         use ksni::menu::*;
         let battery_label = match self.battery {
-            // todo if zero displaythis (it's 1 am on a work morning i need to go to bed)
-            Some(level) => battery_bar(level),
+            Some(level) => battery::battery_bar(level),
             None => "Battery: disconnected".into(),
         };
 
@@ -193,7 +121,7 @@ async fn main() {
         })
         .collect();
 
-    let initial_battery = tokio::task::spawn_blocking(read_battery)
+    let initial_battery = tokio::task::spawn_blocking(battery::read_battery)
         .await
         .unwrap_or(None);
 
@@ -226,7 +154,7 @@ async fn main() {
                 _ = refresh_rx.recv() => log::debug!("Poll: manual refresh"),
             }
 
-            let level = tokio::task::spawn_blocking(read_battery)
+            let level = tokio::task::spawn_blocking(battery::read_battery)
                 .await
                 .unwrap_or(None);
             log::debug!("Battery: {:?}", level);
