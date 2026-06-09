@@ -17,7 +17,7 @@ pub fn render_icon(battery: Option<u8>) -> Vec<u8> {
     // battery body outline
     draw_hollow_rect_mut(&mut img, Rect::at(2, 8).of_size(26, 16), color);
 
-    // battery temrinal nub
+    // battery terminal nub
     draw_filled_rect_mut(&mut img, Rect::at(28, 12).of_size(3, 8), color);
 
     // battery fill
