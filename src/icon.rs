@@ -3,8 +3,8 @@ use imageproc::drawing::{draw_filled_rect_mut, draw_hollow_rect_mut};
 use imageproc::rect::Rect;
 
 pub fn render_icon(battery: Option<u8>) -> Vec<u8> {
+    // create transparent canvas
     let mut img = RgbaImage::new(32, 32);
-
     for px in img.pixels_mut() {
         *px = Rgba([0, 0, 0, 0]);
     }
