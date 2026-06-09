@@ -7,6 +7,7 @@
 //                                      HyperX tray icon
 
 mod battery;
+mod icon;
 
 use image::ImageFormat;
 use ksni::TrayMethods;
@@ -25,7 +26,6 @@ struct MimiTrayState {
 
 #[derive(Debug)]
 struct MimiTray {
-    icon_data: Vec<u8>,
     width: i32,
     height: i32,
 }
@@ -41,7 +41,7 @@ impl ksni::Tray for MimiTrayState {
 
     fn tool_tip(&self) -> ksni::ToolTip {
         ksni::ToolTip {
-            title: "nya!".into(),
+            title: "Mimi - HyperX Tray".into(),
             ..Default::default()
         }
     }
@@ -50,7 +50,7 @@ impl ksni::Tray for MimiTrayState {
         vec![ksni::Icon {
             width: self.tray.width,
             height: self.tray.height,
-            data: self.tray.icon_data.clone(),
+            data: icon::render_icon(self.battery),
         }]
     }
 
@@ -63,7 +63,7 @@ impl ksni::Tray for MimiTrayState {
 
         vec![
             StandardItem {
-                label: "Mimi — (˵◝ ⩊ ◜˵マ".into(),
+                label: "Mimi — HyperX Tray".into(),
                 enabled: false,
                 ..Default::default()
             }
@@ -112,15 +112,6 @@ async fn main() {
 
     let (width, height) = image.dimensions();
 
-    // SNI requires ARGB32 — image crate gives RGBA, so reorder each pixel
-    let icon_data: Vec<u8> = image
-        .pixels()
-        .flat_map(|p| {
-            let [r, g, b, a] = p.0;
-            [a, r, g, b]
-        })
-        .collect();
-
     let initial_battery = tokio::task::spawn_blocking(battery::read_battery)
         .await
         .unwrap_or(None);
@@ -129,7 +120,6 @@ async fn main() {
 
     let handle = MimiTrayState {
         tray: MimiTray {
-            icon_data,
             width: width as i32,
             height: height as i32,
         },
