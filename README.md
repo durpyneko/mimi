@@ -8,6 +8,8 @@
 
 rust rewrite of [hyperx-battery-reader](https://github.com/durpyneko/hyperx-battery-reader/)
 
+<img alt="screenshot" src=".gitmedia/images/screenshot.png" width="200px">
+
 ### DE(s) supported
 
 - KDE Plasma
@@ -81,5 +83,6 @@ systemctl --user start --now mimi.service
 
 - [ ] Split modularly
 - [x] Force refresh
+- [ ] RPC (Self update, more...)
 - [ ] Support other platforms
 - [ ] Support other devices
