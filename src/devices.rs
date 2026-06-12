@@ -6,7 +6,7 @@ pub mod vid {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SupportedDevice {
-    /// HP, Inc. – HyperX Cloud III Wireless
+    /// HP, Inc. - HyperX Cloud III Wireless
     HyperXCloud3W,
 }
 

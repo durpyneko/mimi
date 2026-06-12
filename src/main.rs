@@ -62,12 +62,16 @@ impl ksni::Tray for MimiTrayState {
             Some(d) => d.display_name().into(),
             None => "No device connected".into(),
         };
-        let battery_label = match self.battery {
-            Some(level) => battery::battery_bar(level),
-            None => "Battery: disconnected".into(),
-        };
+        let battery_item: Option<ksni::MenuItem<Self>> = self.battery.map(|level| {
+            StandardItem {
+                label: battery::battery_bar(level),
+                enabled: false,
+                ..Default::default()
+            }
+            .into()
+        });
 
-        vec![
+        let mut items = vec![
             StandardItem {
                 label: "Mimi — Tray".into(),
                 enabled: false,
@@ -81,12 +85,11 @@ impl ksni::Tray for MimiTrayState {
                 ..Default::default()
             }
             .into(),
-            StandardItem {
-                label: battery_label,
-                enabled: false,
-                ..Default::default()
-            }
-            .into(),
+        ];
+
+        items.extend(battery_item);
+
+        items.extend([
             StandardItem {
                 label: "Refresh".into(),
                 activate: Box::new(|this: &mut Self| {
@@ -101,7 +104,9 @@ impl ksni::Tray for MimiTrayState {
                 ..Default::default()
             }
             .into(),
-        ]
+        ]);
+
+        items
     }
 }
 
