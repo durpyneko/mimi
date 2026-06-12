@@ -4,7 +4,7 @@
 </div>
 <br>
 
-**Mimi** — HyperX tray icon
+**Mimi** — Headphone tray icon
 
 rust rewrite of [hyperx-battery-reader](https://github.com/durpyneko/hyperx-battery-reader/)
 
@@ -29,7 +29,7 @@ Add udev rule
 sudo nano /etc/udev/rules.d/99-mimi.rules
 ```
 
-with content (HyperX Cloud III Wireless)
+with content (e.g. HyperX Cloud III Wireless)
 ```conf
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="03f0", ATTRS{idProduct}=="05b7", MODE="0666", TAG+="uaccess"
 ```

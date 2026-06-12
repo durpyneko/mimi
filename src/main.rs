@@ -4,7 +4,7 @@
 //    |        |,--.|        |,--.
 //   |  |  |  ||  ||  |  |  ||  |
 //   `--`--`--'`--'`--`--`--'`--'
-//                                      HyperX tray icon
+//                                      Headphone tray icon
 
 mod battery;
 mod devices;
