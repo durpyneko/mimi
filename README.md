@@ -81,7 +81,7 @@ systemctl --user start --now mimi.service
 
 ### TODO(s)
 
-- [ ] Split modularly
+- [x] Split modularly
 - [x] Force refresh
 - [ ] RPC (Self update, more...)
 - [ ] Support other platforms
