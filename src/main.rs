@@ -87,7 +87,7 @@ impl ksni::Tray for MimiTrayState {
             .into(),
         ];
 
-        items.extend(battery_item);
+        items.extend(battery_item); // if 1 extend, else don't
 
         items.extend([
             StandardItem {
