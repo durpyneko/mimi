@@ -7,20 +7,21 @@
 //                                      HyperX tray icon
 
 mod battery;
+mod devices;
 mod icon;
+
+use crate::devices::SupportedDevice;
 
 use image::ImageFormat;
 use ksni::TrayMethods;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
-const VENDOR_ID: u16 = 0x03f0; // HP / HyperX
-const PRODUCT_ID: u16 = 0x05b7; // Cloud III Wireless
-
 #[derive(Debug)]
 struct MimiTrayState {
     tray: MimiTray,
     battery: Option<u8>,
+    device: Option<SupportedDevice>,
     refresh_tx: mpsc::UnboundedSender<()>,
 }
 
@@ -41,7 +42,7 @@ impl ksni::Tray for MimiTrayState {
 
     fn tool_tip(&self) -> ksni::ToolTip {
         ksni::ToolTip {
-            title: "Mimi - HyperX Tray".into(),
+            title: "Mimi - Tray".into(),
             ..Default::default()
         }
     }
@@ -56,6 +57,11 @@ impl ksni::Tray for MimiTrayState {
 
     fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
         use ksni::menu::*;
+
+        let device_label = match self.device {
+            Some(d) => d.display_name().into(),
+            None => "No device connected".into(),
+        };
         let battery_label = match self.battery {
             Some(level) => battery::battery_bar(level),
             None => "Battery: disconnected".into(),
@@ -63,12 +69,18 @@ impl ksni::Tray for MimiTrayState {
 
         vec![
             StandardItem {
-                label: "Mimi — HyperX Tray".into(),
+                label: "Mimi — Tray".into(),
                 enabled: false,
                 ..Default::default()
             }
             .into(),
             MenuItem::Separator,
+            StandardItem {
+                label: device_label,
+                enabled: false,
+                ..Default::default()
+            }
+            .into(),
             StandardItem {
                 label: battery_label,
                 enabled: false,
@@ -93,6 +105,16 @@ impl ksni::Tray for MimiTrayState {
     }
 }
 
+async fn poll_device_state() -> (Option<SupportedDevice>, Option<u8>) {
+    tokio::task::spawn_blocking(|| {
+        let connected = devices::first_connected();
+        let level = connected.as_ref().map(battery::read_battery).flatten();
+        (connected.map(|c| c.device), level)
+    })
+    .await
+    .unwrap_or((None, None))
+}
+
 #[tokio::main]
 async fn main() {
     nyaaan::init().unwrap();
@@ -112,9 +134,7 @@ async fn main() {
 
     let (width, height) = image.dimensions();
 
-    let initial_battery = tokio::task::spawn_blocking(battery::read_battery)
-        .await
-        .unwrap_or(None);
+    let (initial_device, initial_battery) = poll_device_state().await;
 
     let (refresh_tx, mut refresh_rx) = mpsc::unbounded_channel::<()>();
 
@@ -123,6 +143,7 @@ async fn main() {
             width: width as i32,
             height: height as i32,
         },
+        device: initial_device,
         battery: initial_battery,
         refresh_tx,
     }
@@ -144,13 +165,14 @@ async fn main() {
                 _ = refresh_rx.recv() => log::debug!("Poll: manual refresh"),
             }
 
-            let level = tokio::task::spawn_blocking(battery::read_battery)
-                .await
-                .unwrap_or(None);
+            let (device, level) = poll_device_state().await;
             log::debug!("Battery: {:?}", level);
 
             handle
-                .update(|state: &mut MimiTrayState| state.battery = level)
+                .update(|state: &mut MimiTrayState| {
+                    state.device = device;
+                    state.battery = level
+                })
                 .await;
         }
     });
